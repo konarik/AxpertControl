@@ -16,3 +16,6 @@ Python script communicate with Axpert inverter, send and receive data to emonCMS
 
 axpert_ht.sh and axpert_lt.sh
 Used to be called in cron, uncoment the lines if you need to rebind the hidraw device
+
+cron
+example setting for low tarrif 0-5 and 15-18 o'clock
