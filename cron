@@ -1,0 +1,4 @@
+* 0-4 * * * /usr/local/bin/axpert_lt.sh
+* 5-14 * * * /usr/local/bin/axpert_ht.sh
+* 15-17 * * * /usr/local/bin/axpert_lt.sh
+* 18-23 * * * /usr/local/bin/axpert_ht.sh
