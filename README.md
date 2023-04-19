@@ -1,26 +1,18 @@
 # AxpertControl
-Controling and logging Software for Axpert Inverter
+Controling and logging Software for Axpert Inverter 
+- One loop only. 
+- To be runned via another script or cron. 
+- Switching between low (charging from solar+utility) and high tarrif (solar only charging) from command line. 
+- Swithing to low tarrif only in case that battery is discharged below defined level.
 
-Tested with 2x Axpert MKS-4000 over USB
+Tested with one Axpert MKS III 5k-48 connected to Raspberry PI via USB. Logging tested on local emonCMS (docker) and emoncms.org
 
 Implemented Dynamic Load Control from 73.00E
 
 Repository contains:
 
-Axpert.sh
-Script to run python script
+axpert_hdo.py
+Python script communicate with Axpert inverter, send and receive data to emonCMS (2 servers). 
 
-Axpert.py
-Python script communicate with Axpert inverter, send and receive data to emonCMS. Control mode depends to local tarif.
-
-HDO-NT.py
-Switch to low tarif
-
-HDO-VT.py
-Switch to High tarif
-
-HDO-A1B8DP5
-cron job for switching tarif in West Bohemia Czech Republic
-
-axpert_tmp.py
-testing script wiht CRC, commands, ...�
+axpert_ht.sh and axpert_lt.sh
+Used to be called in cron, uncoment the lines if you need to rebind the hidraw device
