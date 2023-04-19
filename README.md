@@ -16,3 +16,7 @@ axpert_hdo.py - Python script communicate with Axpert inverter, send and receive
 axpert_ht.sh and axpert_lt.sh - Used to be called in cron, uncoment the lines if you need to rebind the hidraw device
 
 cron - Example setting for low tarrif between 0-5 and 15-18 o'clock
+
+Open points:
+- move from python2 to python3
+- add conditions for undefined servers
