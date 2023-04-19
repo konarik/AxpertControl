@@ -11,11 +11,8 @@ Implemented Dynamic Load Control from 73.00E
 
 Repository contains:
 
-axpert_hdo.py
-Python script communicate with Axpert inverter, send and receive data to emonCMS (2 servers). 
+axpert_hdo.py - Python script communicate with Axpert inverter, send and receive data to emonCMS (2 servers). 
 
-axpert_ht.sh and axpert_lt.sh
-Used to be called in cron, uncoment the lines if you need to rebind the hidraw device
+axpert_ht.sh and axpert_lt.sh - Used to be called in cron, uncoment the lines if you need to rebind the hidraw device
 
-cron
-example setting for low tarrif 0-5 and 15-18 o'clock
+cron - Example setting for low tarrif between 0-5 and 15-18 o'clock
