@@ -3,28 +3,37 @@
 # Axpert Inverter control script
 
 # Read values from inverter, sends values to emonCMS,
-# read electric low or high tarif from emonCMS and setting charger and mode to hold batteries fully charged
+# removed - read electric low or high tarif from emonCMS and setting charger and mode to hold batteries fully charged 
 # controls grid charging current to meet circuit braker maximum alloweble grid current(power)
 # calculation of CRC is done by XMODEM mode, but in firmware is wierd mistake in POP02 command, so exception of calculation is done in serial_command(command) function
 # real PL2303 = big trouble in my setup, cheap chinese converter some times disconnecting, workaround is at the end of serial_command(command) function
 # differenc between SBU(POP02) and Solar First (POP01): in state POP01 inverter works only if PV_voltage <> 0 !!! SBU mode works during night
 
 # Josef Krieglstein 20190312 last update
+# __________________________________________________________________________________________
 
-
-# Modifications done by me to the original script:
-#   - runs only once
-#   - added command line arguments for tarrif swithing (and commented emoncms part)
+# Modifications done to the original script:
+#   - runs till runnig time of the script is < log_time (log at least once)
+#   - added command line arguments for tarrif swithing
 #   - added second server for upload
 #   - printing of current set up of the inverter
 #   - commented the second inverter options
 # Line arguments are:
-#   - "LT" low tarrif (switches to solar+utility if battery level is < min_batt)
+#   - "LT" low tarrif(switches to solar+utility if battery level is < min_batt)
+#   - "LTaf" low tarrif afternoon(switches to solar+utility if battery level is < min_batt_afternoon)
 #   - "HT" high tarrif
 #   - "SET" shows 
 #   - if no argument is given only data is processed
 #   - some modifications in device initization code
 # Serial connection not tested
+
+# Minimum battery level for low tarrif to switch to grid charging
+min_batt = 20
+min_batt_afternoon = 90
+# Low battery level for to switch to utility
+low_batt = 13
+# Time in seconds till last logging start from start of the script
+log_time = 44
 
 import urllib2
 import serial, time, sys, string
@@ -42,13 +51,14 @@ import usb.util
 import sys
 import signal
 import time
+from datetime import datetime, timedelta
 from binascii import unhexlify
 #import binascii
 
 # Domain you want to post to: localhost would be an emoncms installation on your own laptop
 # this could be changed to emoncms.org to post to emoncms.org or your own server
 server = "emoncms.org"
-server2 = ""
+server2 = "x.x.x.x:8080"
 
 # Location of emoncms in your server, the standard setup is to place it in a folder called emoncms
 # To post to emoncms.org change this to blank: ""
@@ -61,9 +71,6 @@ apikey2 = ""
 # Connection type to the inverter - serial connection not tested
 #connection = "serial"
 connection = "USB"
-
-# Minimum battery level for low tarrif to switch to grid charging
-min_batt = 90
 
 # Node id youd like the emontx to appear as
 nodeid0 = 1
@@ -134,7 +141,7 @@ parrallel_num = 0
 #PPCP002        # Setting parallel device charger priority: OnlySolarCharging - notworking
 
 def handler(signum, frame):
-    print 'Signal handler called with signal', signum
+    print "Signal handler called with signal", signum
     raise Exception("Handler")
 
 ser = serial.Serial()
@@ -425,32 +432,9 @@ def get_battery_level():
 
     return battery_level
 
-def get_output_source_priority():
+def get_source_priority():
     #get inverter output mode priority
     output_source_priority = "8"
-    try:
-        if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
-            response = serial_command("QPIRI",usb0)
-            if "NAKss" in response:
-                if connection == "serial": time.sleep(0.5)
-                return ""
-            response.rstrip()
-            nums = response.split(' ', 99)
-            output_source_priority = nums[16]
-
-        elif ( connection == "serial" ):
-            ser.close()
-            print "cannot use serial port ..."
-            return ""
-
-    except Exception, e:
-            print "error parsing inverter data...: " + str(e)
-            return ""
-
-    return output_source_priority
-
-def get_charger_source_priority():
-    #get inverter charger mode priority
     charger_source_priority = "8"
     try:
         if ( connection == "serial" and ser.isOpen() or connection == "USB" ):
@@ -460,6 +444,7 @@ def get_charger_source_priority():
                 return ""
             response.rstrip()
             nums = response.split(' ', 99)
+            output_source_priority = nums[16]
             charger_source_priority = nums[17]
 
         elif ( connection == "serial" ):
@@ -471,7 +456,8 @@ def get_charger_source_priority():
             print "error parsing inverter data...: " + str(e)
             return ""
 
-    return charger_source_priority
+    return output_source_priority,charger_source_priority
+
 
 def set_output_source_priority(output_source_priority):
     #set inverter output mode priority
@@ -546,23 +532,6 @@ def send_data(data):
         print "error sending to emoncms...: " + str(e)
         return ''
     return 1
-
-def read_hdo(id):
-    # Read high/low tarif from emoncms (the acctual tarif information can be created by cron script, or from emonTX input)
-    # in Czech Republic, West Bohemia it is perriodicaly, tarif name is for example: A1B8DP5 => (8 hours of low and 16 hours of high) / each day
-    try:
-        conn = httplib.HTTPConnection(server)
-        conn.request("GET", "/"+emoncmspath+"/feed/value.json?id="+str(id)+"&apikey="+apikey)
-        response = conn.getresponse()
-        response_tmp = response.read()
-        conn.close()
-        return response_tmp
-
-    except Exception as e:
-        print "error reading from emoncms...: " + str(e)
-        return ''
-    return 1
-
 
 def serial_command(command,device):
     try:
@@ -651,8 +620,47 @@ def dynamic_control():
             return
 
     return 1
+def log_to_server():
+    try:
+        #    for inverter in range (0, 2):
+
+            inverter = 0
+        #        if (inverter == 1 and parrallel_num < 1): break
+            data = get_data("QBV",inverter)
+            if not data == "": send = send_data(data)
+            data = get_data("Q1",inverter)
+            if not data == "": send = send_data(data)
+            data = get_data("QPIGS", inverter)
+            if not data == "": send = send_data(data)
+            data = get_data("QMCHGCR", inverter)
+            if not data == "": send = send_data(data)
+            data = get_data("QMUCHGCR", inverter)
+            if not data == "": send = send_data(data)
+            data = get_data("QPIRI", inverter)
+            if not data == "": send = send_data(data)
+
+
+
+            if inverter == 0:
+                data = get_data("QPGS0", inverter)
+                if not data == "": send = send_data(data)
+        #    elif inverter == 1:
+        #        data = get_data("QPGS1", inverter)
+        #        if not data == "": send = send_data(data)
+        #        time.sleep(15)
+        #        if (load > 0 and mode0 >= 0 and mode1 >= 0 and parrallel_num == 1):
+        #            dynamic_control()
+
+        #    charge_current = set_charge_current ()
+    except Exception, e:
+            print "error during logging ...: " + str(e)
+            return
+
+    return 1
 
 def main():
+    start = datetime.now()
+    
     global mode0
     global mode1
     global parrallel_num
@@ -660,36 +668,7 @@ def main():
     global load
     wake_up_start = time.time()
 
-#    for inverter in range (0, 2):
-
     inverter = 0
-#        if (inverter == 1 and parrallel_num < 1): break
-    data = get_data("QBV",inverter)
-    if not data == "": send = send_data(data)
-    data = get_data("Q1",inverter)
-    if not data == "": send = send_data(data)
-    data = get_data("QPIGS", inverter)
-    if not data == "": send = send_data(data)
-    data = get_data("QMCHGCR", inverter)
-    if not data == "": send = send_data(data)
-    data = get_data("QMUCHGCR", inverter)
-    if not data == "": send = send_data(data)
-    data = get_data("QPIRI", inverter)
-    if not data == "": send = send_data(data)
-
-
-
-    if inverter == 0:
-        data = get_data("QPGS0", inverter)
-        if not data == "": send = send_data(data)
-#    elif inverter == 1:
-#        data = get_data("QPGS1", inverter)
-#        if not data == "": send = send_data(data)
-#        time.sleep(15)
-#        if (load > 0 and mode0 >= 0 and mode1 >= 0 and parrallel_num == 1):
-#            dynamic_control()
-
-#    charge_current = set_charge_current ()
 
     try:
         if not sys.argv[1] == "" : hdo_cmd = sys.argv[1]
@@ -700,16 +679,16 @@ def main():
     batt_level = int(get_battery_level())
 
     hdo_cmd = hdo_cmd.upper()
-    if ( hdo_cmd == "LT" or hdo_cmd == "HT" or hdo_cmd == "SET"):
-        output_source_priority = get_output_source_priority()
-        charger_source_priority = get_charger_source_priority()
+    if ( hdo_cmd == "LT" or hdo_cmd == "HT" or hdo_cmd == "SET" or hdo_cmd == "LTAF"):
+        output_source_priority,charger_source_priority = get_source_priority()
+        
     else :
-        print("Wrong command line argument use LT or HT or SET")
+        print("Wrong command line argument use LT or HT or SET or LTAF")
         hdo_cmd = ""
     
     if not hdo_cmd == "":
         if ( not output_source_priority == "8" and not charger_source_priority == "8" ):
-            if ( hdo_cmd == "LT" and batt_level < min_batt and batt_level > -1 ): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
+            if ( hdo_cmd == "LT" and batt_level < min_batt and batt_level > 0 ): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
                 print("Low tarrif and battery level " + str(min_batt) + " %, switching to solar+utility (limit value " + str(batt_level) + "%)")
                 print("Actual battery level " + str(batt_level) + " %")
                 if not output_source_priority == "1":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
@@ -719,10 +698,29 @@ def main():
             elif hdo_cmd == "LT" :
                 print("Low tarrif and battery level >" + str(min_batt) + " %, solar only") # electricity is cheap, but batteries are charged
                 print("Actual battery level " + str(batt_level) + " %")
-            elif hdo_cmd == "HT":
+            elif ( hdo_cmd == "LTAF" and batt_level < min_batt_afternoon and batt_level > 0 ): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
+                print("Low tarrif afternoon and battery level " + str(min_batt_afternoon) + " %, switching to solar+utility (limit value " + str(batt_level) + "%)")
+                print("Actual battery level " + str(batt_level) + " %")
+                if not output_source_priority == "1":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
+                    set_output_source_priority(1)
+                if not charger_source_priority == "2":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
+                    set_charger_source_priority(2)
+            elif ( hdo_cmd == "LTAF" and batt_level > 99 ): # electricity is cheap, but batteries are charged
+                print("Low tarrif afternoon and battery is charged switching to SBU")
+                if not output_source_priority == "2":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
+                    set_output_source_priority(2)
+                if not charger_source_priority == "3":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
+                    set_charger_source_priority(3)
+            elif ( hdo_cmd == "HT" and batt_level > low_batt ):
                 print("High tarrif")  # electricity is expensive, so supply everything from batteries not from grid
                 if not output_source_priority == "2":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
                     set_output_source_priority(2)
+                if not charger_source_priority == "3":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
+                    set_charger_source_priority(3)
+            elif ( hdo_cmd == "HT" and batt_level < low_batt and batt_level > 0 ):
+                print("High tarrif low battery. Swithing to USB")  # electricity is expensive, battery is low
+                if not output_source_priority == "0":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
+                    set_output_source_priority(0)
                 if not charger_source_priority == "3":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
                     set_charger_source_priority(3)
             if hdo_cmd == "SET" : print("Settings to be displayed")
@@ -734,9 +732,15 @@ def main():
             if not charger_source_priority == "8":
                 if charger_source_priority == "0": print("Charger priority: Utility first")
                 if charger_source_priority == "1": print("Charger priority: Solar first")
-                if charger_source_priority == "2": print("Charger priority: Solar+Utility first")
+                if charger_source_priority == "2": print("Charger priority: Solar+Utility")
                 if charger_source_priority == "3": print("Charger priority: Solar only")
 
-
+    log_to_server()
+    while datetime.now() - start < timedelta(seconds=log_time):
+    #    measure = datetime.now()
+        log_to_server()
+    #    measure = datetime.now() - measure
+    #    print("Runnig time " + str(measure.seconds) + " seconds")
+ 
 if __name__ == '__main__':
     main()
