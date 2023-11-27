@@ -29,9 +29,15 @@
 
 # Minimum battery level for low tarrif to switch to grid charging
 min_batt = 20
-min_batt_afternoon = 90
+min_batt_afternoon = 80
+min_batt_afternoon_winter = 95
+min_batt_winter = 60
+min_batt_ballance = 70
+
 # Low battery level for to switch to utility
-low_batt = 13
+low_batt = 20
+# Low battery level for to switch back to solar during high tarrif
+low_batt_ret = 25
 # Time in seconds till last logging start from start of the script
 log_time = 44
 
@@ -58,15 +64,15 @@ from binascii import unhexlify
 # Domain you want to post to: localhost would be an emoncms installation on your own laptop
 # this could be changed to emoncms.org to post to emoncms.org or your own server
 server = "emoncms.org"
-server2 = "x.x.x.x:8080"
+server2 = "192.168.3.21:8080"
 
 # Location of emoncms in your server, the standard setup is to place it in a folder called emoncms
 # To post to emoncms.org change this to blank: ""
 emoncmspath = ""
 
 # Write apikey of emoncms account
-apikey = ""
-apikey2 = ""
+apikey = "cec26b13495eb566ef38521540d44349"
+apikey2 = "99d8270ef140bfd9d7409a32ba337629"
 
 # Connection type to the inverter - serial connection not tested
 #connection = "serial"
@@ -676,19 +682,21 @@ def main():
         print("No command line argument for tarrif change")
         hdo_cmd=""
         
-    batt_level = int(get_battery_level())
+    batt_level = int(float(get_battery_level()))
+
+    log_to_server()
 
     hdo_cmd = hdo_cmd.upper()
-    if ( hdo_cmd == "LT" or hdo_cmd == "HT" or hdo_cmd == "SET" or hdo_cmd == "LTAF"):
+    if ( hdo_cmd == "LT" or hdo_cmd == "LTW" or hdo_cmd == "HT" or hdo_cmd == "SET" or hdo_cmd == "BAL" or hdo_cmd == "LTAF" or hdo_cmd == "LTAFW"):
         output_source_priority,charger_source_priority = get_source_priority()
         
     else :
-        print("Wrong command line argument use LT or HT or SET or LTAF")
+        print("Wrong command line argument use LT, LTW, HT, SET, BAL, LTAFW or LTAF")
         hdo_cmd = ""
     
-    if not hdo_cmd == "":
+    if (not hdo_cmd == "" and batt_level > 1):
         if ( not output_source_priority == "8" and not charger_source_priority == "8" ):
-            if ( hdo_cmd == "LT" and batt_level < min_batt and batt_level > 0 ): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
+            if ( hdo_cmd == "LT" and batt_level < min_batt): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
                 print("Low tarrif and battery level " + str(min_batt) + " %, switching to solar+utility (limit value " + str(batt_level) + "%)")
                 print("Actual battery level " + str(batt_level) + " %")
                 if not output_source_priority == "1":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
@@ -697,6 +705,16 @@ def main():
                     set_charger_source_priority(2)
             elif hdo_cmd == "LT" :
                 print("Low tarrif and battery level >" + str(min_batt) + " %, solar only") # electricity is cheap, but batteries are charged
+                print("Actual battery level " + str(batt_level) + " %")
+            elif ( hdo_cmd == "LTW" and batt_level < min_batt_winter and batt_level > 0): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
+                print("Low tarrif winter and battery level " + str(min_batt_winter) + " %, switching to solar+utility (limit value " + str(batt_level) + "%)")
+                print("Actual battery level " + str(batt_level) + " %")
+                if not output_source_priority == "1":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
+                    set_output_source_priority(1)
+                if not charger_source_priority == "2":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
+                    set_charger_source_priority(2)
+            elif hdo_cmd == "LTW" :
+                print("Low tarrif winter and battery level >" + str(min_batt_winter) + " %, solar only") # electricity is cheap, but batteries are charged
                 print("Actual battery level " + str(batt_level) + " %")
             elif ( hdo_cmd == "LTAF" and batt_level < min_batt_afternoon and batt_level > 0 ): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
                 print("Low tarrif afternoon and battery level " + str(min_batt_afternoon) + " %, switching to solar+utility (limit value " + str(batt_level) + "%)")
@@ -711,7 +729,14 @@ def main():
                     set_output_source_priority(2)
                 if not charger_source_priority == "3":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
                     set_charger_source_priority(3)
-            elif ( hdo_cmd == "HT" and batt_level > low_batt ):
+            elif ( hdo_cmd == "LTAFW" and batt_level < min_batt_afternoon_winter and batt_level > 0 ): # electricity is cheap, so charge batteries from grid and hold them fully charged if the value is > than min_batt! important for Lead Acid Batteries Only!
+                print("Low tarrif afternoon and battery level " + str(min_batt_afternoon) + " %, switching to solar+utility (limit value " + str(batt_level) + "%)")
+                print("Actual battery level " + str(batt_level) + " %")
+                if not output_source_priority == "1":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
+                    set_output_source_priority(1)
+                if not charger_source_priority == "2":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
+                    set_charger_source_priority(2)
+            elif ( hdo_cmd == "HT" and batt_level > low_batt_ret ):
                 print("High tarrif")  # electricity is expensive, so supply everything from batteries not from grid
                 if not output_source_priority == "2":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
                     set_output_source_priority(2)
@@ -723,6 +748,13 @@ def main():
                     set_output_source_priority(0)
                 if not charger_source_priority == "3":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
                     set_charger_source_priority(3)
+            elif ( hdo_cmd == "BAL" and batt_level < min_batt_ballance and batt_level > 0 ): # ballancing batteries
+                print("Ballancing batteries and battery level " + str(batt_level) + " %, switching to solar+utility (limit value " + str(min_batt_ballance) + "%)")
+                print("Actual battery level " + str(batt_level) + " %")
+                if not output_source_priority == "0":       # Utility First (0: Utility first, 1: Solar First, 2: SBU)
+                    set_output_source_priority(0)
+                if not charger_source_priority == "2":      # Utility First (0: Utility first, 1: Solar First, 2: Solar+Utility, 3: Solar Only)
+                    set_charger_source_priority(2)
             if hdo_cmd == "SET" : print("Settings to be displayed")
             print("Actual settings:")
             if not output_source_priority == "8":
@@ -735,7 +767,6 @@ def main():
                 if charger_source_priority == "2": print("Charger priority: Solar+Utility")
                 if charger_source_priority == "3": print("Charger priority: Solar only")
 
-    log_to_server()
     while datetime.now() - start < timedelta(seconds=log_time):
     #    measure = datetime.now()
         log_to_server()

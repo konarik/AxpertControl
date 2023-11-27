@@ -9,8 +9,11 @@ Controling and logging Software for Axpert Inverter
 
 Line arguments are:
 - "LT" low tarrif(switches to solar+utility if battery level is < min_batt)
-- "LTaf" low tarrif afternoon(switches to solar+utility if battery level is < min_batt_afternoon)
+- "LTW" low tarrif winter(switches to solar+utility if battery level is < min_batt_winter)
+- "LTAF" low tarrif afternoon(switches to solar+utility if battery level is < min_batt_afternoon)
+- "LTAFW" low tarrif afternoon in winter(switches to solar+utility if battery level is < min_batt_afternoon_winter)
 - "HT" high tarrif
+- "BAT" ballancing batteries when battery level < min_batt_ballance = 70
 - "SET" shows actual setting
 
 Tested with one Axpert MKS III 5k-48 connected to Raspberry PI via USB. Logging tested on local emonCMS (docker) and emoncms.org
@@ -21,9 +24,9 @@ Repository contains:
 
 axpert_hdo.py - Python script communicate with Axpert inverter, send and receive data to emonCMS (2 servers). 
 
-axpert_ht.sh, axpert_lt.sh and axpert_ltaf.sh - Used to be called in cron, uncoment the lines if you need to rebind the hidraw device
+axpert.sh  - Used to be called in cron if you need to rebind the hidraw device
 
-cron - Example setting for low tarrif between 0-5 and 15-18 o'clock
+cron - Example setting 
 
 Open points:
 - move from python2 to python3
